@@ -1,13 +1,11 @@
 package ie.com.faustoalves.seatflightmap.service;
 
-import com.sun.xml.internal.bind.v2.TODO;
 import ie.com.faustoalves.seatflightmap.model.Passenger;
 import org.json.simple.JSONArray;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,7 +25,7 @@ public class SeatFlightMapService {
             if(passengerList.size() < (dimensions.get(0) * dimensions.get(1))) {
                 result = convertStringToJSONArray("[{ \"error\": \"Passengers list is bigger than flight dimension\"}]");
             } else {
-                result = createSeatList(passengerList, dimensions);
+                result = createSeatList(dataList, passengerList, dimensions);
             }
         } catch (Exception e) {
             e.getMessage();
@@ -36,37 +34,103 @@ public class SeatFlightMapService {
     }
 
 
-    public JSONArray createSeatList(List <Passenger> passengerList, List<Integer> flightDimension) {
+    public JSONArray createSeatList(String[] dataList, List <Passenger> passengerList, List<Integer> flightDimension) {
         String satisfacitonLevel;
-        int group = passengerList.get(0).getGroup();
         int row = 1;
-        String passengersGroup = "";
+        String passengersGroup;
+        Integer passengerListSize = passengerList.size();
+        String[][] seatMap = mountStringJson(dataList, passengerList, flightDimension);
+
         String result = "[ ";
-        int lines = 1;
-
-        //TODO: Change the business rules
-        for(Passenger passenger: passengerList) {
-            if(passenger.getGroup() == group) {
-                passengersGroup += passenger.getCodPassenger() + " ";
-            } else {
-                result += " { \"row\": \"" +row + "\" " + " \"passengers\": \"" + passengersGroup + "\" }, ";
-                passengersGroup = " ";
-                passengersGroup += passenger.getCodPassenger() + " ";
-                row++;
+        for(String[] groups: seatMap){
+            passengersGroup = "";
+            for(String pass: groups) {
+                passengersGroup += pass + " ";
             }
-            if (lines == passengerList.size()) {
-                result += " { \"row\": \"" + row + "\" " + " \"passengers\": \"" + passengersGroup + "\" }, ";
-            }
-            group = passenger.getGroup();
-            lines++;
+            result += " { \"row\": \"" +row + "\" " + " \"passengers\": \"" + passengersGroup + "\" }, ";
+            row++;
         }
-
-        satisfacitonLevel = getSatisfactionPassengers(passengerList.size(), 3);
+        satisfacitonLevel = getSatisfactionPassengers(passengerListSize, 3);
         result += "{ \"satisfactionLevel\": \"" + satisfacitonLevel + "\" }";
         result += " ]";
 
         return convertStringToJSONArray(result);
     }
+
+    private String[][] mountStringJson (String[] dataList, List <Passenger> passengerList, List<Integer> flightDimension ) {
+        int group = passengerList.get(0).getGroup();
+        String[][] seatsMap = new String[flightDimension.get(1)][flightDimension.get(0)];
+        Integer[] sizeGroups = new Integer[dataList.length];
+        String[] groups;
+        for (int i = 1; i < dataList.length ; i++ ) {
+            groups = dataList[i].split(" ");
+            sizeGroups[i] = groups.length;
+        }
+
+        int row = 0;
+        int seatNumber = 0;
+        while (!passengerList.isEmpty()) {
+            List<Passenger> removePassengerList = new ArrayList<>();
+            for (Passenger passenger : passengerList) {
+                if (passenger.getGroup() == group) {
+                    if (seatNumber < flightDimension.get(0)) {
+                        seatsMap[row][seatNumber] = passenger.getCodPassenger();
+                        seatNumber++;
+                        removePassengerList.add(passenger);
+                    }
+                }
+            }
+            for (Passenger removePassenger : removePassengerList) {
+                passengerList.remove(removePassenger);
+                removePassengerList = new ArrayList<>();
+            }
+
+            if (seatNumber < flightDimension.get(0)) {
+                for (int f = 1; f < sizeGroups.length; f++) {
+                    if (sizeGroups[f] <= flightDimension.get(0) - seatNumber) {
+                        String[] groupsData = dataList[f].split(" ");
+                        for (int j = 0; j < groupsData.length; j++) {
+                            for (Passenger p : passengerList) {
+                                if (p.getCodPassenger().equals(groupsData[j])) {
+                                    seatsMap[row][seatNumber] = p.getCodPassenger();
+                                    seatNumber++;
+                                    removePassengerList.add(p);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                row++;
+                seatNumber = 0;
+            }
+
+            for(Passenger removePass: removePassengerList) {
+                passengerList.remove(removePass);
+            }
+        }
+
+        for(int i = 0; i < seatsMap.length;i++) {
+            for(int j = 0; j < seatsMap[i].length; j++) {
+                if(seatsMap[i][j].contains("W")) {
+                    if(j != 0 && j != (flightDimension.get(0) - 1)) {
+                        if (!seatsMap[i][0].contains("W")) {
+                            String before = seatsMap[i][j].replace("W", "");
+                            seatsMap[i][0] = seatsMap[i][j].replace("W", "");
+                            seatsMap[i][j] = before;
+                        } else if (!seatsMap[i][flightDimension.get(0) - 1].contains("W")) {
+                            String before = seatsMap[i][flightDimension.get(0) - 1].replace("W", "");
+                            seatsMap[i][flightDimension.get(0) -1] = seatsMap[i][j].replace("W", "");
+                            seatsMap[i][j] = before;
+                        }
+                    }
+                }
+            }
+        }
+        return seatsMap;
+    }
+
+
 
     private List<Integer> getFlightDimension(String dimensions) {
         List<Integer> dimensionsFlight = new ArrayList<>();
